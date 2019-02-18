@@ -38,8 +38,8 @@ functions:
       POLLER_ARN: ${self:resources.Outputs.Poller.Value}
   sendNotification:
     handler: handler.sendNotification
-  checkLink:
-    handler: handler.checkLink
+  didCheckout:
+    handler: doordash.didCheckout
   getBill:
     handler: doordash.getBill
     events:
@@ -67,11 +67,15 @@ stepFunctions:
     poller:
       name: poller
       definition:
-        StartAt: poll
+        StartAt: wait
         States:
+          wait: 
+            Type: Wait
+            TimestampPath: "$.timestamp"
+            Next: notify
           poll:
             Type: Task
-            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-checkLink"
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-didCheckout"
             Next: check-result
           check-result:
             Type: Choice
@@ -79,16 +83,16 @@ stepFunctions:
               - Variable: "$.didCheckout"
                 NumericEquals: 1
                 Next: notify
-            Default: wait
-          wait:
+            Default: sleep
+          sleep:
             Type: Wait
             Seconds: 60
+            InputPath: "$.url"
+            OutputPath: "$.url"
             Next: poll
           notify:
             Type: Task
-            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-sendNotification"
-            Parameters: 
-              text: "Checkout complete, time to pay!"
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-getBill"
             End: True
 
 

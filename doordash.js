@@ -1,6 +1,8 @@
 'use strict';
 
 const request = require('request');
+const requestP = require('request-promise-native');
+const { sendSlackMessage } = require('./slack');
 
 // This pattern is used to parse the doordash bill for the JSON
 // string that includes order information, i.e.
@@ -11,58 +13,52 @@ const request = require('request');
 const ORDER_CART_REGEX_PATTERN =
     /view\.order_cart\s*\=\s*JSON\.parse\((.*)\);\n/gm;
 
+// didCheckout expects to have an event that looks like this:
+// {
+//  "url": https://some.doordash.link
+// }
+// and will return { didCheckout: 1 } if the order has been checked out
+//
+export const didCheckout = async (event, context) => {
+  const url = event.url;
+  const order = await getCartOrderJson(url)
+
+  if (getTip(order) != null && getTax(order) != null) {
+    return { url, didCheckout: 1 }
+  }
+
+  return { url, didCheckout: 0 }
+}
+
 // getBill expects to have an event that looks like this:
 // {
 //  "url": https://some.doordash.link
 // }
 // and will return what each person owes the order aggregator
 // in the printObject lines.
-module.exports.getBill = (event, context, callback) => {
-  console.log('typeof', typeof event);
+export const getBill = async (event, context) => {
   console.log(event);
-
   try {
-    // Doordash url
-
     const url = event.url;
-    console.log('here\'s the url', url);
+    const cart_order_json = await getCartOrderJson(url)
 
-    request(url, function(error, response, body) {
-      // Parse response body to get cart order details in a JSON object.
-      const matches = ORDER_CART_REGEX_PATTERN.exec(body);
-      const cart_order_text = matches[1];
-      const cart_order_json = JSON.parse(JSON.parse(cart_order_text));
+    const text = [totalsDisplayString(cart_order_json), "---------------", ordersDisplayString(cart_order_json)].join('\n')
+    await sendSlackMessage({ text })
 
-      // Parse and display high-level order cost details.
-      var order_costs = {
-        tip: getTip(cart_order_json),
-        tax: getTax(cart_order_json),
-        service_fee: getServiceFee(cart_order_json),
-        delivery_fee: getDeliveryFee(cart_order_json),
-        subtotal: getSubtotal(cart_order_json),
-        total: getTotal(cart_order_json)
-      };
-      printObject(order_costs);
-
-      // Calculate and display order costs per person.
-      const orders = getOrders(cart_order_json);
-      for (var i in orders) {
-        var order = orders[i];
-        var subtotal = calculateConsumerSubtotal(order);
-        var order_info = {
-          name: getName(order.consumer),
-          consumer_subtotal: formatter.format(subtotal / 100),
-          consumer_total: formatter.format(
-              calculateConsumerTotal(subtotal, order_costs) / 100)
-        };
-        printObject(order_info);
-      }
-    });
   } catch (error) {
     console.log(error);
-    callback(error);
+    throw error;
   }
 };
+
+// Returns cart order json from doordash url
+const getCartOrderJson = async (url) => {
+  const body = await requestP(url);
+  console.log(body);
+  const matches = ORDER_CART_REGEX_PATTERN.exec(body);
+  const cart_order_text = matches[1];
+  return JSON.parse(JSON.parse(cart_order_text));
+}
 
 // Create our currency formatter.
 var formatter = new Intl.NumberFormat('en-US', {
@@ -108,11 +104,42 @@ function calculateConsumerSubtotal(order) {
   return subtotal;
 }
 
+function calculcateOrderCosts(cart_order_json) {
+    return {
+      tip: getTip(cart_order_json),
+      tax: getTax(cart_order_json),
+      service_fee: getServiceFee(cart_order_json),
+      delivery_fee: getDeliveryFee(cart_order_json),
+      subtotal: getSubtotal(cart_order_json),
+      total: getTotal(cart_order_json)
+    };
+}
+
 function calculateConsumerTotal(consumer_subtotal, order_costs) {
   const ratio = consumer_subtotal / order_costs.subtotal;
   const shared_costs = order_costs.tip + order_costs.tax +
       order_costs.service_fee + order_costs.delivery_fee;
   return ratio * shared_costs + consumer_subtotal;
+}
+
+function totalsDisplayString(cart_order_json) {
+  const { tip, tax, service_fee, delivery_fee, subtotal, total } = calculcateOrderCosts(cart_order_json)
+  return [`Tip:          ${formatter.format(tip / 100)}`,
+         `Tax:          ${formatter.format(tax / 100)}`,
+         `Service Fee:  ${formatter.format(service_fee / 100)}`,
+         `Delivery Fee: ${formatter.format(delivery_fee / 100)}`,
+         `Subtotal:     ${formatter.format(subtotal / 100)}`,
+         `Total:        ${formatter.format(total / 100)}`].join('\n');
+}
+
+function ordersDisplayString(cart_order_json) {
+  return getOrders(cart_order_json).map(order => {
+    const subtotal = calculateConsumerSubtotal(order);
+    const order_costs = calculcateOrderCosts(cart_order_json);
+    const total = calculateConsumerTotal(subtotal, order_costs);
+    const fees = total - subtotal;
+    return `${getName(order.consumer)} owes ${formatter.format(subtotal / 100)} + ${formatter.format(fees / 100)} = ${formatter.format(total / 100)}`
+  }).join('\n');
 }
 
 function printObject(obj) {

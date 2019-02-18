@@ -5,6 +5,7 @@ const { DateTime } = require('luxon');
 const queryString = require('query-string');
 const AWS = require('aws-sdk');
 const stepfunctions = new AWS.StepFunctions();
+const { sendSlackMessage, getTimeZone } = require('./slack');
 
 const startExecution = (params) =>
   new Promise((resolve, reject) => {
@@ -17,24 +18,6 @@ const startExecution = (params) =>
     })
   });
 
-const sendSlackMessage = async (body) =>
-  request.post(process.env.SLACK_WEBHOOK_URL, { json: true, body });
-
-const getTimeZone = async (team_domain, user_id) => {
-
-  const options = { 
-    method: 'GET',
-    url: `https://${team_domain}.slack.com/api/users.info`,
-    qs: { 
-      token: process.env.SLACK_TOKEN,
-      user: user_id,
-      include_locale: 'true' 
-    },
-  };
-
-  return request(options).then(JSON.parse).then(r => r.user.tz);
-}
-
 export const startBoba = async (event, context) => {
   try {
     console.log(event)
@@ -45,17 +28,18 @@ export const startBoba = async (event, context) => {
     const zone = await getTimeZone(team_domain, user_id);
     const timestamp = DateTime.fromFormat(time, "h:mma", { zone }).toISO()
     const message = args.splice(2)
+    console.log(url)
 
     await sendSlackMessage({
       "attachments": [
           {
               "fallback": `New Boba Order started by ${user_name}! Order here: ${url}`,
               "color": "#36a64f",
-              "pretext": "@channel It's about time for some boba",
+              "pretext": "<!channel> It's about time for some boba",
               "author_name": user_name,
-              "author_url": `http://${team_domain}.slack.com/team/${user_id}`,
+              "author_link": `http://${team_domain}.slack.com/team/${user_id}`,
               "title": "New Boba Order!",
-              "title_url": url,
+              "title_link": url,
               "text": "Order by clicking the url above",
               "fields": [
                   {
@@ -78,7 +62,7 @@ export const startBoba = async (event, context) => {
 
     await startExecution({
       stateMachineArn: process.env.POLLER_ARN,
-      input: JSON.stringify({ url }),
+      input: JSON.stringify({ url, timestamp }),
     });
 
     return {
@@ -91,16 +75,6 @@ export const startBoba = async (event, context) => {
     throw error;
   }
 };
-
-
-export const checkLink = async (event, context) => {
-    console.log(event)
-    const url = event.url;
-    if (Math.random() > 0.5) {
-      return { url, didCheckout: 1 }
-    }
-    return { url, didCheckout: 0 }
-}
 
 
 export const sendNotification = async (event, context) => {
