@@ -40,7 +40,7 @@ export const startBoba = async (event, context) => {
     console.log(event)
     const { text, user_id, user_name, team_domain } = queryString.parse(event.body);
     const args = text.split(' ');
-    const link = args[0];
+    const url = args[0];
     const time = args[1];
     const zone = await getTimeZone(team_domain, user_id);
     const timestamp = DateTime.fromFormat(time, "h:mma", { zone }).toISO()
@@ -49,14 +49,14 @@ export const startBoba = async (event, context) => {
     await sendSlackMessage({
       "attachments": [
           {
-              "fallback": `New Boba Order started by ${user_name}! Order here: ${link}`,
+              "fallback": `New Boba Order started by ${user_name}! Order here: ${url}`,
               "color": "#36a64f",
               "pretext": "@channel It's about time for some boba",
               "author_name": user_name,
-              "author_link": `http://${team_domain}.slack.com/team/${user_id}`,
+              "author_url": `http://${team_domain}.slack.com/team/${user_id}`,
               "title": "New Boba Order!",
-              "title_link": link,
-              "text": "Order by clicking the link above",
+              "title_url": url,
+              "text": "Order by clicking the url above",
               "fields": [
                   {
                       "title": "Order Closes at",
@@ -78,7 +78,7 @@ export const startBoba = async (event, context) => {
 
     await startExecution({
       stateMachineArn: process.env.POLLER_ARN,
-      input: JSON.stringify({ link }),
+      input: JSON.stringify({ url }),
     });
 
     return {
@@ -92,13 +92,14 @@ export const startBoba = async (event, context) => {
   }
 };
 
+
 export const checkLink = async (event, context) => {
     console.log(event)
-    const link = event.link;
+    const url = event.url;
     if (Math.random() > 0.5) {
-      return { link, didCheckout: 1 }
+      return { url, didCheckout: 1 }
     }
-    return { link, didCheckout: 0 }
+    return { url, didCheckout: 0 }
 }
 
 

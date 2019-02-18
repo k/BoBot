@@ -74,7 +74,11 @@ stepFunctions:
               - Variable: "$.didCheckout"
                 NumericEquals: 1
                 Next: notify
-            Default: poll
+            Default: wait
+          wait:
+            Type: Wait
+            Seconds: 60
+            Next: poll
           notify:
             Type: Task
             Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-sendNotification"
