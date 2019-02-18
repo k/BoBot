@@ -40,7 +40,12 @@ functions:
     handler: handler.sendNotification
   checkLink:
     handler: handler.checkLink
-
+  getBill:
+    handler: doordash.getBill
+    events:
+      - http:
+          path: getBill 
+          method: post
 
 stepFunctions:
   stateMachines:
