@@ -4,7 +4,9 @@ service:
 # Add the serverless-webpack plugin
 provider:
   name: aws
-  runtime: nodejs6.10
+  stage: dev
+  runtime: nodejs8.10
+
   iamRoleStatements:
     - Effect: "Allow"
       Action:
@@ -14,18 +16,31 @@ provider:
 
   region: us-east-1
 
+  environment:
+    SLACK_WEBHOOK_URL: "https://hooks.slack.com/services/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"
+    SLACK_TOKEN: "xoxp-552776779697-552600781808-553385325779-0a607c73986452b65cceec7a8b19344d"
+
+    # custom:
+    #  webpack:
+    #    webpackConfig: './webpack.config.js'   # Name of webpack configuration file
+    #    includeModules: true   # Node modules configuration for packaging
+    #    packager: 'npm'
 
 functions:
-  startTimer:
-    handler: handler.startTimer
+  startBoba:
+    handler: handler.startBoba
     events:
       - http:
-          path: start-timer
-          method: get
+          path: start-boba
+          method: post
     environment:
       TIMER_ARN: ${self:resources.Outputs.Timer.Value}
+      POLLER_ARN: ${self:resources.Outputs.Poller.Value}
   sendNotification:
     handler: handler.sendNotification
+  checkLink:
+    handler: handler.checkLink
+
 
 stepFunctions:
   stateMachines:
@@ -36,12 +51,40 @@ stepFunctions:
         States: 
           wait: 
             Type: Wait
-            Seconds: 60
+            TimestampPath: "$.timestamp"
             Next: notify
           notify: 
             Type: Task
-            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-foobar-baz"
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-sendNotification"
+            Parameters: 
+              text: "Time for checkout!"
             End: true
+    poller:
+      name: poller
+      definition:
+        StartAt: poll
+        States:
+          poll:
+            Type: Task
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-checkLink"
+            Next: check-result
+          check-result:
+            Type: Choice
+            Choices:
+              - Variable: "$.didCheckout"
+                NumericEquals: 1
+                Next: notify
+            Default: poll
+          notify:
+            Type: Task
+            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-sendNotification"
+            Parameters: 
+              text: "Checkout complete, time to pay!"
+            End: True
+
+
+
+
 #    The following are a few example events you can configure
 #    NOTE: Please make sure to change your handler code to work with those events
 #    Check the event documentation for details
@@ -79,11 +122,16 @@ resources:
   Resources:
   Outputs:
     Timer:
-      Description: The ARN of the timer machine
+      Description: The ARN of the checkout reminder
       Value:
         Ref: Timer
+    Poller:
+      Description: The ARN of the doordash poller
+      Value:
+        Ref: Poller
 
 plugins:
+  - serverless-offline
   - serverless-webpack
   - serverless-step-functions
   - serverless-pseudo-parameters

@@ -11,11 +11,18 @@
     "babel-plugin-transform-runtime": "^6.23.0",
     "babel-polyfill": "^6.23.0",
     "babel-preset-env": "^1.6.0",
+    "serverless-offline": "^4.4.2",
     "serverless-pseudo-parameters": "^2.4.0",
     "serverless-step-functions": "^1.13.0",
     "serverless-webpack": "^3.1.1",
     "webpack": "^3.3.0"
   },
   "author": "The serverless webpack authors (https://github.com/elastic-coders/serverless-webpack)",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "luxon": "^1.11.3",
+    "query-string": "^6.2.0",
+    "request": "^2.88.0",
+    "request-promise-native": "^1.0.7"
+  }
 }

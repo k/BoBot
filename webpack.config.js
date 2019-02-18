@@ -9,8 +9,10 @@ module.exports = {
     loaders: [{
       test: /\.js$/,
       loaders: ['babel-loader'],
-      include: __dirname,
-      exclude: /node_modules/,
+      include: [__dirname,
+        path.resolve(__dirname, "node_modules/luxon")
+      ],
+      exclude: /node_modules/
     }],
   },
   output: {
