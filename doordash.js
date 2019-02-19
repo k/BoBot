@@ -2,7 +2,7 @@
 
 const request = require('request');
 const requestP = require('request-promise-native');
-const { sendSlackMessage } = require('./slack');
+const {sendSlackMessage} = require('./slack');
 
 // This pattern is used to parse the doordash bill for the JSON
 // string that includes order information, i.e.
@@ -21,14 +21,16 @@ const ORDER_CART_REGEX_PATTERN =
 //
 export const didCheckout = async (event, context) => {
   const url = event.url;
-  const order = await getCartOrderJson(url)
+  const order = await getCartOrderJson(url);
+
+  console.log(order);
 
   if (getTip(order) != null && getTax(order) != null) {
-    return { url, didCheckout: 1 }
+    return {url, didCheckout: 1};
   }
 
-  return { url, didCheckout: 0 }
-}
+  return {url, didCheckout: 0};
+};
 
 // getBill expects to have an event that looks like this:
 // {
@@ -40,11 +42,13 @@ export const getBill = async (event, context) => {
   console.log(event);
   try {
     const url = event.url;
-    const cart_order_json = await getCartOrderJson(url)
+    const cart_order_json = await getCartOrderJson(url);
 
-    const text = [totalsDisplayString(cart_order_json), "---------------", ordersDisplayString(cart_order_json)].join('\n')
-    await sendSlackMessage({ text })
-
+    const text = [
+      totalsDisplayString(cart_order_json), '---------------',
+      ordersDisplayString(cart_order_json)
+    ].join('\n');
+    await sendSlackMessage({text});
   } catch (error) {
     console.log(error);
     throw error;
@@ -52,13 +56,13 @@ export const getBill = async (event, context) => {
 };
 
 // Returns cart order json from doordash url
-const getCartOrderJson = async (url) => {
+const getCartOrderJson = async url => {
   const body = await requestP(url);
   console.log(body);
   const matches = ORDER_CART_REGEX_PATTERN.exec(body);
   const cart_order_text = matches[1];
   return JSON.parse(JSON.parse(cart_order_text));
-}
+};
 
 // Create our currency formatter.
 var formatter = new Intl.NumberFormat('en-US', {
@@ -105,14 +109,14 @@ function calculateConsumerSubtotal(order) {
 }
 
 function calculcateOrderCosts(cart_order_json) {
-    return {
-      tip: getTip(cart_order_json),
-      tax: getTax(cart_order_json),
-      service_fee: getServiceFee(cart_order_json),
-      delivery_fee: getDeliveryFee(cart_order_json),
-      subtotal: getSubtotal(cart_order_json),
-      total: getTotal(cart_order_json)
-    };
+  return {
+    tip: getTip(cart_order_json),
+    tax: getTax(cart_order_json),
+    service_fee: getServiceFee(cart_order_json),
+    delivery_fee: getDeliveryFee(cart_order_json),
+    subtotal: getSubtotal(cart_order_json),
+    total: getTotal(cart_order_json)
+  };
 }
 
 function calculateConsumerTotal(consumer_subtotal, order_costs) {
@@ -123,23 +127,49 @@ function calculateConsumerTotal(consumer_subtotal, order_costs) {
 }
 
 function totalsDisplayString(cart_order_json) {
-  const { tip, tax, service_fee, delivery_fee, subtotal, total } = calculcateOrderCosts(cart_order_json)
-  return [`Tip:          ${formatter.format(tip / 100)}`,
-         `Tax:          ${formatter.format(tax / 100)}`,
-         `Service Fee:  ${formatter.format(service_fee / 100)}`,
-         `Delivery Fee: ${formatter.format(delivery_fee / 100)}`,
-         `Subtotal:     ${formatter.format(subtotal / 100)}`,
-         `Total:        ${formatter.format(total / 100)}`].join('\n');
+  const {tip, tax, service_fee, delivery_fee, subtotal, total} =
+      calculcateOrderCosts(cart_order_json);
+  return [
+    `Tip:          ${formatter.format(tip / 100)}`,
+    `Tax:          ${formatter.format(tax / 100)}`,
+    `Service Fee:  ${formatter.format(service_fee / 100)}`,
+    `Delivery Fee: ${formatter.format(delivery_fee / 100)}`,
+    `Subtotal:     ${formatter.format(subtotal / 100)}`,
+    `Total:        ${formatter.format(total / 100)}`
+  ].join('\n');
 }
 
 function ordersDisplayString(cart_order_json) {
-  return getOrders(cart_order_json).map(order => {
-    const subtotal = calculateConsumerSubtotal(order);
-    const order_costs = calculcateOrderCosts(cart_order_json);
-    const total = calculateConsumerTotal(subtotal, order_costs);
-    const fees = total - subtotal;
-    return `${getName(order.consumer)} owes ${formatter.format(subtotal / 100)} + ${formatter.format(fees / 100)} = ${formatter.format(total / 100)}`
-  }).join('\n');
+  return getOrders(cart_order_json)
+      .map(order => {
+        const subtotal = calculateConsumerSubtotal(order);
+        const order_costs = calculcateOrderCosts(cart_order_json);
+        const total = calculateConsumerTotal(subtotal, order_costs);
+        const fees = total - subtotal;
+        return `${getName(order.consumer)} owes ${
+            formatter.format(subtotal / 100)} + ${
+            formatter.format(fees / 100)} = ${formatter.format(total / 100)}`;
+      })
+      .join('\n');
+}
+
+// Similar to ordersDisplayString, but shows who hasn't paid yet based on an
+// accounting_object. This accounting object should be retrieved from the data
+// store.
+function ordersDisplayStringWithAccounting(cart_order_json, accounting_object) {
+  return getOrders(cart_order_json)
+      .map(order => {
+        const name = getName(order.consumer);
+        const subtotal = calculateConsumerSubtotal(order);
+        const order_costs = calculcateOrderCosts(cart_order_json);
+        const total = calculateConsumerTotal(subtotal, order_costs);
+        const fees = total - subtotal;
+        const paidStatus = accounting_object[name] ? '' : 'HAS NOT PAID!!';
+        return `${name} owes ${formatter.format(subtotal / 100)} + ${
+            formatter.format(fees / 100)} = ${
+            formatter.format(total / 100)} -- ${paidStatus}`;
+      })
+      .join('\n');
 }
 
 function printObject(obj) {
