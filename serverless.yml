@@ -72,7 +72,7 @@ stepFunctions:
           wait: 
             Type: Wait
             TimestampPath: "$.timestamp"
-            Next: notify
+            Next: poll
           poll:
             Type: Task
             Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-didCheckout"
