@@ -67,12 +67,8 @@ stepFunctions:
     poller:
       name: poller
       definition:
-        StartAt: wait
+        StartAt: poll
         States:
-          wait: 
-            Type: Wait
-            TimestampPath: "$.timestamp"
-            Next: poll
           poll:
             Type: Task
             Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-didCheckout"
