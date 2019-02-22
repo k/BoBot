@@ -161,6 +161,25 @@ function ordersDisplayString(cart_order_json) {
     .join("\n");
 }
 
+// Similar to ordersDisplayString, but shows who hasn't paid yet based on an
+// accounting_object. This accounting object should be retrieved from the data
+// store.
+function ordersDisplayStringWithAccounting(cart_order_json, accounting_object) {
+  return getOrders(cart_order_json)
+      .map(order => {
+        const name = getName(order.consumer);
+        const subtotal = calculateConsumerSubtotal(order);
+        const order_costs = calculcateOrderCosts(cart_order_json);
+        const total = calculateConsumerTotal(subtotal, order_costs);
+        const fees = total - subtotal;
+        const paidStatus = accounting_object[name] ? '' : 'HAS NOT PAID!!';
+        return `${name} owes ${formatter.format(subtotal / 100)} + ${
+            formatter.format(fees / 100)} = ${
+            formatter.format(total / 100)} -- ${paidStatus}`;
+      })
+      .join('\n');
+}
+
 function printObject(obj) {
   Object.keys(obj).forEach(key => {
     console.log(`${key}: ${obj[key]}`);
