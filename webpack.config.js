@@ -1,23 +1,32 @@
 const path = require('path');
-// eslint-disable-next-line import/no-unresolved
 const slsw = require('serverless-webpack');
 
 module.exports = {
   entry: slsw.lib.entries,
-  target: 'node',
-  module: {
-    loaders: [{
-      test: /\.js$/,
-      loaders: ['babel-loader'],
-      include: [__dirname,
-        path.resolve(__dirname, "node_modules/luxon")
-      ],
-      exclude: /node_modules/
-    }],
+  resolve: {
+    extensions: [
+      '.js',
+      '.json',
+      '.ts',
+      '.tsx'
+    ]
   },
   output: {
     libraryTarget: 'commonjs',
     path: path.join(__dirname, '.webpack'),
-    filename: '[name].js',
+    filename: '[name].js'
   },
+  target: 'node',
+  module: {
+    rules: [
+      {
+        test: /\.ts(x?)$/,
+        use: [
+          {
+            loader: 'ts-loader'
+          }
+        ],
+      }
+    ]
+  }
 };
