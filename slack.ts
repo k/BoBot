@@ -16,6 +16,8 @@ if (!slack_token) {
 export const web = new WebClient(slack_token);
 
 export const getTimeZone = async (user_id: string) => {
-  const res = <any>await web.users.info({ include_locale: true, user: user_id });
+  const res = <any>(
+    await web.users.info({ include_locale: true, user: user_id })
+  );
   return res.user.tz;
 };

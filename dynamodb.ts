@@ -1,40 +1,60 @@
-const uuid = require("uuid");
-const AWS = require("aws-sdk"); // eslint-disable-line import/no-extraneous-dependencies
+import { DynamoDB } from "aws-sdk";
 
-const dynamoDb = new AWS.DynamoDB.DocumentClient();
+const dynamoDb = new DynamoDB.DocumentClient();
+const TableName = process.env.DYNAMODB_TABLE;
 
-export const testCreate = (event, context, callback) => {
+if (!TableName) {
+  throw new Error("DYNAMODB_TABLE env var required");
+}
+
+function sanitizeObject(obj) {
+  for (const i in obj) {
+    if (obj[i] == null || obj[i] == '') {
+      delete obj[i];
+    }
+    if (typeof obj[i] === "object") {
+      sanitizeObject(obj[i]);
+    }
+  }
+  return obj
+}
+
+export const createOrderInfo = async (item) => {
   const timestamp = new Date().getTime();
-
   const params = {
-    TableName: process.env.DYNAMODB_TABLE,
+    TableName,
     Item: {
-      id: uuid.v1(),
-      text: "test data",
-      checked: false,
       createdAt: timestamp,
-      updatedAt: timestamp
+      updatedAt: timestamp,
+      ...sanitizeObject(item),
     }
   };
 
-  // write the todo to the database
-  dynamoDb.put(params, error => {
-    // handle potential errors
-    if (error) {
-      console.error(error);
-      callback(null, {
-        statusCode: error.statusCode || 501,
-        headers: { "Content-Type": "text/plain" },
-        body: "Couldn't create the todo item."
-      });
-      return;
-    }
-
-    // create a response
-    const response = {
-      statusCode: 200,
-      body: JSON.stringify(params.Item)
-    };
-    callback(null, response);
-  });
+  return dynamoDb.put(params).promise();
 };
+
+export const getOrderInfo = async(id: string) => {
+  const params = {
+    TableName,
+    Key: { id }
+  };
+
+  return dynamoDb.get(params).promise()
+}
+
+export const updateAccounting = async (item) => {
+  const timestamp = new Date().getTime();
+  const params = {
+    TableName,
+    Key: {
+      id: item.id,
+    },
+    ExpressionAttributeValues: {
+      ':accounting': item.accounting,
+      ':updatedAt': timestamp,
+    },
+    UpdateExpression: 'SET accounting = :accounting, updatedAt = :updatedAt',
+    ReturnValues: 'ALL_NEW',
+  };
+  return dynamoDb.update(params).promise()
+}

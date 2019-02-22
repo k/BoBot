@@ -29,11 +29,11 @@ provider:
     SLACK_WEBHOOK_URL: "https://hooks.slack.com/services/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"
     SLACK_TOKEN: "xoxp-552776779697-552600781808-553385325779-0a607c73986452b65cceec7a8b19344d"
 
-    custom:
-     webpack:
-       webpackConfig: './webpack.config.js'   # Name of webpack configuration file
-       includeModules: false   # Node modules configuration for packaging
-       packager: 'yarn'
+custom:
+  webpack:
+    webpackConfig: './webpack.config.js'   # Name of webpack configuration file
+    includeModules: false   # Node modules configuration for packaging
+    packager: 'yarn'
 
 functions:
   getTimeZone:
@@ -41,16 +41,13 @@ functions:
   testCreate:
     handler: dynamodb.testCreate
   startBoba:
-    handler: handler.startBoba
+    handler: startBoba.startBoba
     events:
       - http:
           path: start-boba
           method: post
     environment:
-      TIMER_ARN: ${self:resources.Outputs.Timer.Value}
       POLLER_ARN: ${self:resources.Outputs.Poller.Value}
-  sendNotification:
-    handler: handler.sendNotification
   didCheckout:
     handler: doordash.didCheckout
   getBill:
@@ -59,24 +56,15 @@ functions:
       - http:
           path: getBill 
           method: post
+  accounting:
+    handler: doordash.accounting
+    events:
+      - http:
+          path: interact
+          method: post
 
 stepFunctions:
   stateMachines:
-    timer:
-      name: timer
-      definition:
-        StartAt: wait
-        States: 
-          wait: 
-            Type: Wait
-            TimestampPath: "$.timestamp"
-            Next: notify
-          notify: 
-            Type: Task
-            Resource: "arn:aws:lambda:#{AWS::Region}:#{AWS::AccountId}:function:${self:service}-${opt:stage}-sendNotification"
-            Parameters: 
-              text: "Time for checkout!"
-            End: true
     poller:
       name: poller
       definition:
@@ -96,8 +84,6 @@ stepFunctions:
           sleep:
             Type: Wait
             Seconds: 60
-            InputPath: "$.url"
-            OutputPath: "$.url"
             Next: poll
           notify:
             Type: Task
@@ -157,10 +143,6 @@ resources:
           WriteCapacityUnits: 1
         TableName: ${self:provider.environment.DYNAMODB_TABLE}
   Outputs:
-    Timer:
-      Description: The ARN of the checkout reminder
-      Value:
-        Ref: Timer
     Poller:
       Description: The ARN of the doordash poller
       Value:

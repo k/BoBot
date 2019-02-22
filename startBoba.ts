@@ -3,23 +3,17 @@ import * as queryString from "query-string";
 import { StepFunctions } from "aws-sdk";
 import { webhook, getTimeZone } from "./slack";
 
-const stepfunctions = new StepFunctions();
+const poller_arn = process.env.POLLER_ARN;
+if (!poller_arn) {
+  throw new Error("POLLER_ARN env var must be set");
+}
 
-const startExecution = params =>
-  new Promise((resolve, reject) => {
-    stepfunctions.startExecution(params, function(err, data) {
-      if (err != null) {
-        reject(err);
-      } else {
-        resolve(data);
-      }
-    });
-  });
+const stepfunctions = new StepFunctions();
 
 export const startBoba = async (event, context) => {
   try {
     console.log(event);
-    const { text, user_id, user_name, team_domain } = queryString.parse(
+    const { text, user_id, user_name, team_domain, channel_id } = queryString.parse(
       event.body
     );
     if (
@@ -32,10 +26,15 @@ export const startBoba = async (event, context) => {
     }
     const args = text.split(" ");
     const url = args[0];
-    const time = args[1];
-    const zone = await getTimeZone(user_id);
-    const timestamp = DateTime.fromFormat(time, "h:mma", { zone }).toISO();
-    const message = args.splice(2);
+    const message = args.splice(1).join(' ');
+    const fields: { title: string, value: string, short?: boolean }[] = []
+    if (message.length > 0) {
+      fields.push({
+          title: "Message from host",
+          value: message,
+          short: false
+      });
+    }
     console.log(url);
 
     await webhook.send({
@@ -49,13 +48,7 @@ export const startBoba = async (event, context) => {
           title: "New Boba Order!",
           title_link: url,
           text: "Order by clicking the url above",
-          fields: [
-            {
-              title: "Order Closes at",
-              value: time,
-              short: false
-            }
-          ],
+          fields,
           footer: "Boba",
           footer_icon: "https://s3.amazonaws.com/k33.me/images/boba-icon.png",
           ts: `${Math.round(new Date().getTime() / 1000)}`
@@ -63,15 +56,16 @@ export const startBoba = async (event, context) => {
       ]
     });
 
-    await startExecution({
-      stateMachineArn: process.env.TIMER_ARN,
-      input: JSON.stringify({ timestamp })
-    });
-
-    await startExecution({
-      stateMachineArn: process.env.POLLER_ARN,
-      input: JSON.stringify({ url, timestamp })
-    });
+    await stepfunctions.startExecution({
+      stateMachineArn: poller_arn,
+      input: JSON.stringify({ 
+        url,
+        timestamp: DateTime.local().toISO(),
+        slack_team_domain: team_domain,
+        slack_channel_id: channel_id,
+        vendor: vendorFromUrl(url),
+      })
+    }).promise();
 
     return {
       statusCode: 200,
@@ -83,12 +77,6 @@ export const startBoba = async (event, context) => {
   }
 };
 
-export const sendNotification = async (event, context) => {
-  try {
-    console.log(event);
-    await webhook.send({ text: event.text });
-  } catch (error) {
-    console.log(error);
-    throw error;
-  }
-};
+function vendorFromUrl(url) {
+  return "doordash";
+}

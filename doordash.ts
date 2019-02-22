@@ -1,5 +1,41 @@
 import * as request from "request-promise-native";
+import * as queryString from 'query-string';
+import { DateTime } from "luxon";
+
 import { webhook } from "./slack";
+import { createOrderInfo, getOrderInfo, updateAccounting } from './dynamodb';
+
+export const accounting = async(event) => {
+  console.log(event);
+  const { payload } = queryString.parse(
+    event.body
+  );
+  if (typeof payload != 'string') {
+    throw new Error("Unexpected result from Slack API");
+  }
+  const { actions, original_message, callback_id } = JSON.parse(payload);
+  if (actions.length > 0 && actions[0].selected_options.length > 0) {
+    const action = actions[0];
+    const { Item: orderInfo } = await getOrderInfo(callback_id);
+    if (!orderInfo) {
+      throw new Error("Order not found");
+    }
+    const { value: user_id } = action.selected_options[0];
+    orderInfo.accounting[user_id] = true
+    const { Attributes: updatedOrderInfo } = await updateAccounting(orderInfo);
+    if (!updatedOrderInfo) {
+      throw new Error("Updating order failed");
+    }
+    console.log("test");
+    const update_message = createBillMessage(updatedOrderInfo.url, callback_id, updatedOrderInfo.order_json, updatedOrderInfo.accounting);
+    console.log(update_message);
+    return {
+      ...update_message,
+      replace_original: true,
+    };
+  }
+  return original_message // Default to noop
+}
 
 // This pattern is used to parse the doordash bill for the JSON
 // string that includes order information, i.e.
@@ -16,15 +52,18 @@ const ORDER_CART_REGEX_PATTERN = /view\.order_cart\s*\=\s*JSON\.parse\((.*)\);\n
 // and will return { didCheckout: 1 } if the order has been checked out
 //
 export const didCheckout = async (event, context) => {
-  const { url } = event;
+  const { url, timestamp, ...rest } = event;
   const order = await getCartOrderJson(url);
   console.log(order);
+  if (DateTime.local().diff(DateTime.fromISO(timestamp)).as("hours") > 6) {
+    webhook.send({ text: `This order has been going on too long so I will stop monitoring it: ${url}}` });
+  }
 
   if (getTip(order) != null && getTax(order) != null) {
     return { url, didCheckout: 1 };
   }
 
-  return { url, didCheckout: 0 };
+  return { ...rest, url, timestamp, didCheckout: 0, };
 };
 
 // getBill expects to have an event that looks like this:
@@ -34,22 +73,59 @@ export const didCheckout = async (event, context) => {
 // and will return what each person owes the order aggregator
 // in the printObject lines.
 export const getBill = async (event, context) => {
-  console.log(event);
   try {
-    const { url } = event;
-    const cart_order_json = await getCartOrderJson(url);
+    const { 
+      url,  
+      slack_team_domain,
+      slack_channel_id,
+      vendor,
 
-    const text = [
-      totalsDisplayString(cart_order_json),
-      "---------------",
-      ordersDisplayString(cart_order_json)
-    ].join("\n");
-    await webhook.send({ text });
+    } = event;
+    const cart_order_json = await getCartOrderJson(url);
+    const id = vendor + "." + cart_order_json.url_code;
+    createOrderInfo({ 
+      url, 
+      slack_team_domain,
+      slack_channel_id,
+      vendor,
+      id,
+      order_json: cart_order_json,
+      accounting: {} 
+    });
+    await webhook.send(createBillMessage(url, id, cart_order_json, accounting));
   } catch (error) {
     console.log(error);
     throw error;
   }
 };
+
+function createBillMessage(url, callback_id, cart_order_json, accounting) {
+  const text = [
+    "Boba has been ordered! Receipt is below",
+    "-------------------------",
+    totalsDisplayString(cart_order_json),
+    "-------------------------",
+    ordersDisplayStringWithAccounting(cart_order_json, accounting)
+  ].join("\n");
+  const type: "select" | "button" = "select";
+  return { 
+    text,
+    attachments: [{
+      title: 'Check the status of the order here!',
+      title_link: url
+    },
+    {
+      text: "Please pay the host promptly",
+      callback_id,
+      actions: [{
+        type,
+        name: "orderers",
+        text: "Mark yourself as paid",
+        options: ordererOptions(cart_order_json)
+      }]
+    }]
+  };
+}
 
 // Returns cart order json from doordash url
 const getCartOrderJson = async url => {
@@ -57,7 +133,7 @@ const getCartOrderJson = async url => {
   console.log(body);
   const matches = ORDER_CART_REGEX_PATTERN.exec(body);
   if (!matches) {
-    throw new Error("Doordash order cart contents not found!")
+    throw new Error("Doordash order cart contents not found!");
   }
   const cart_order_text = matches[1];
   return JSON.parse(JSON.parse(cart_order_text));
@@ -166,18 +242,33 @@ function ordersDisplayString(cart_order_json) {
 // store.
 function ordersDisplayStringWithAccounting(cart_order_json, accounting_object) {
   return getOrders(cart_order_json)
-      .map(order => {
-        const name = getName(order.consumer);
-        const subtotal = calculateConsumerSubtotal(order);
-        const order_costs = calculcateOrderCosts(cart_order_json);
-        const total = calculateConsumerTotal(subtotal, order_costs);
-        const fees = total - subtotal;
-        const paidStatus = accounting_object[name] ? '' : 'HAS NOT PAID!!';
-        return `${name} owes ${formatter.format(subtotal / 100)} + ${
-            formatter.format(fees / 100)} = ${
-            formatter.format(total / 100)} -- ${paidStatus}`;
-      })
-      .join('\n');
+    .map(order => {
+            const name = getName(order.consumer);
+            const subtotal = calculateConsumerSubtotal(order);
+      const order_costs = calculcateOrderCosts(cart_order_json);
+            const total = calculateConsumerTotal(subtotal, order_costs);
+            const fees = total - subtotal;
+      const paidStatus = accounting_object[order.id] ? "" : "HAS NOT PAID!!";
+      return `${name} owes ${formatter.format(
+        subtotal / 100
+      )} + ${formatter.format(fees / 100)} = ${formatter.format(
+        total / 100
+      )} -- ${paidStatus}`;
+    })
+    .join("\n");
+}
+
+function ordererOptions(cart_order_json) {
+  console.log(cart_order_json);
+  return getOrders(cart_order_json)
+    .map(order => ({
+      text: getName(order.consumer),
+      value: order.id + ""
+    }));
+}
+
+async function markUserAsPaid(userId) {
+  console.log(userId);
 }
 
 function printObject(obj) {
