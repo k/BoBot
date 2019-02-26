@@ -2,7 +2,7 @@ import * as request from "request-promise-native";
 import * as queryString from 'query-string';
 import { DateTime } from "luxon";
 
-import { webhook } from "./slack";
+import { webhook, web } from "./slack";
 import { createOrderInfo, getOrderInfo, updateAccounting } from './dynamodb';
 
 export const accounting = async(event) => {
@@ -13,7 +13,9 @@ export const accounting = async(event) => {
   if (typeof payload != 'string') {
     throw new Error("Unexpected result from Slack API");
   }
-  const { actions, original_message, callback_id } = JSON.parse(payload);
+  const { actions, original_message, callback_id, message_ts: ts, channel: { id: channel_id } } = JSON.parse(payload);
+  console.log(ts)
+  console.log(channel_id)
   if (actions.length > 0 && actions[0].selected_options.length > 0) {
     const action = actions[0];
     const { Item: orderInfo } = await getOrderInfo(callback_id);
@@ -26,15 +28,25 @@ export const accounting = async(event) => {
     if (!updatedOrderInfo) {
       throw new Error("Updating order failed");
     }
-    console.log("test");
     const update_message = createBillMessage(updatedOrderInfo.url, callback_id, updatedOrderInfo.order_json, updatedOrderInfo.accounting);
     console.log(update_message);
+    await web.chat.update({
+      ts,
+      channel: channel_id,
+      ...update_message
+    });
     return {
-      ...update_message,
-      replace_original: true,
+      statusCode: 200,
+      body: {
+        ...update_message,
+        replace_original: true,
+      }
     };
   }
-  return original_message // Default to noop
+  return {
+    statusCode: 200,
+    body: original_message // Default to noop
+  };
 }
 
 // This pattern is used to parse the doordash bill for the JSON
@@ -54,7 +66,6 @@ const ORDER_CART_REGEX_PATTERN = /view\.order_cart\s*\=\s*JSON\.parse\((.*)\);\n
 export const didCheckout = async (event, context) => {
   const { url, timestamp, ...rest } = event;
   const order = await getCartOrderJson(url);
-  console.log(order);
   if (DateTime.local().diff(DateTime.fromISO(timestamp)).as("hours") > 6) {
     webhook.send({ text: `This order has been going on too long so I will stop monitoring it: ${url}}` });
   }
@@ -130,8 +141,9 @@ function createBillMessage(url, callback_id, cart_order_json, accounting) {
 // Returns cart order json from doordash url
 const getCartOrderJson = async url => {
   const body = await request(url);
-  console.log(body);
+  console.log(body)
   const matches = ORDER_CART_REGEX_PATTERN.exec(body);
+  console.log(matches)
   if (!matches) {
     throw new Error("Doordash order cart contents not found!");
   }
@@ -259,7 +271,6 @@ function ordersDisplayStringWithAccounting(cart_order_json, accounting_object) {
 }
 
 function ordererOptions(cart_order_json) {
-  console.log(cart_order_json);
   return getOrders(cart_order_json)
     .map(order => ({
       text: getName(order.consumer),
