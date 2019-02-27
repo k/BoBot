@@ -2,7 +2,7 @@ import * as request from "request-promise-native";
 import * as queryString from 'query-string';
 import { DateTime } from "luxon";
 
-import { webhook, web } from "./slack";
+import { web } from "./slack";
 import { createOrderInfo, getOrderInfo, updateAccounting } from './dynamodb';
 
 export const accounting = async(event) => {
@@ -13,7 +13,14 @@ export const accounting = async(event) => {
   if (typeof payload != 'string') {
     throw new Error("Unexpected result from Slack API");
   }
-  const { actions, original_message, callback_id, message_ts: ts, channel: { id: channel_id } } = JSON.parse(payload);
+  const { 
+    actions,
+    original_message,
+    callback_id,
+    message_ts: ts,
+    channel: { id: channel_id },
+    team: { id: team_id } 
+  } = JSON.parse(payload);
   console.log(ts)
   console.log(channel_id)
   if (actions.length > 0 && actions[0].selected_options.length > 0) {
@@ -23,14 +30,15 @@ export const accounting = async(event) => {
       throw new Error("Order not found");
     }
     const { value: user_id } = action.selected_options[0];
-    orderInfo.accounting[user_id] = true
+    orderInfo.accounting[user_id] = !orderInfo.accounting[user_id];
     const { Attributes: updatedOrderInfo } = await updateAccounting(orderInfo);
     if (!updatedOrderInfo) {
       throw new Error("Updating order failed");
     }
     const update_message = createBillMessage(updatedOrderInfo.url, callback_id, updatedOrderInfo.order_json, updatedOrderInfo.accounting);
     console.log(update_message);
-    await web.chat.update({
+    const slack = await web(team_id);
+    slack.chat.update({
       ts,
       channel: channel_id,
       ...update_message
@@ -64,17 +72,21 @@ const ORDER_CART_REGEX_PATTERN = /view\.order_cart\s*\=\s*JSON\.parse\((.*)\);\n
 // and will return { didCheckout: 1 } if the order has been checked out
 //
 export const didCheckout = async (event, context) => {
-  const { url, timestamp, ...rest } = event;
+  const { url, timestamp, slack_team_id, slack_channel_id } = event;
   const order = await getCartOrderJson(url);
   if (DateTime.local().diff(DateTime.fromISO(timestamp)).as("hours") > 6) {
-    webhook.send({ text: `This order has been going on too long so I will stop monitoring it: ${url}}` });
+    const slack = await web(slack_team_id);
+    slack.chat.postMessage({
+      channel: slack_channel_id,
+      text: `This order has been going on too long so I will stop monitoring it: ${url}}`
+    });
   }
 
   if (getTip(order) != null && getTax(order) != null) {
-    return { url, didCheckout: 1 };
+    return { ...event, didCheckout: 1 };
   }
 
-  return { ...rest, url, timestamp, didCheckout: 0, };
+  return { ...event, didCheckout: 0, };
 };
 
 // getBill expects to have an event that looks like this:
@@ -83,11 +95,12 @@ export const didCheckout = async (event, context) => {
 // }
 // and will return what each person owes the order aggregator
 // in the printObject lines.
-export const getBill = async (event, context) => {
+export const getBill = async (event) => {
   try {
     const { 
       url,  
       slack_team_domain,
+      slack_team_id,
       slack_channel_id,
       vendor,
 
@@ -97,13 +110,18 @@ export const getBill = async (event, context) => {
     createOrderInfo({ 
       url, 
       slack_team_domain,
+      slack_team_id,
       slack_channel_id,
       vendor,
       id,
       order_json: cart_order_json,
       accounting: {} 
     });
-    await webhook.send(createBillMessage(url, id, cart_order_json, accounting));
+    const slack = await web(slack_team_id)
+    await slack.chat.postMessage({
+      channel: slack_channel_id,
+      ...createBillMessage(url, id, cart_order_json, accounting)
+    });
   } catch (error) {
     console.log(error);
     throw error;

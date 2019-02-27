@@ -6,13 +6,15 @@ provider:
   name: aws
   stage: dev
   runtime: nodejs8.10
+  timeout: 10
+  memorySize: 512
 
   iamRoleStatements:
     - Effect: "Allow"
       Action:
         - "states:StartExecution"
       Resource:
-        - "*" # TODO change to be more specific arns
+        - "${self:resources.Outputs.Poller.Value}" # TODO change to be more specific arns
     - Effect: Allow
       Action:
         - dynamodb:Query
@@ -21,13 +23,16 @@ provider:
         - dynamodb:PutItem
         - dynamodb:UpdateItem
         - dynamodb:DeleteItem
-      Resource: "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}"
+      Resource: 
+        - "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.ORDERS_TABLE}"
+        - "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.SLACK_APP_TABLE}"
 
   region: us-east-1
   environment:
-    DYNAMODB_TABLE: ${self:service}-${opt:stage, self:provider.stage}
-    SLACK_WEBHOOK_URL: "https://hooks.slack.com/services/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"
-    SLACK_TOKEN: "xoxp-552776779697-552600781808-553385325779-0a607c73986452b65cceec7a8b19344d"
+    ORDERS_TABLE: ${self:service}-${opt:stage, self:provider.stage}-OrderInfo
+    SLACK_APP_TABLE: ${self:service}-${opt:stage, self:provider.stage}-SlackApp
+    SLACK_CLIENT_ID: "552776779697.553305394532"
+    SLACK_SECRET: "21c7e54019f22d9645c46f0928c115fd"
 
 custom:
   webpack:
@@ -62,6 +67,12 @@ functions:
       - http:
           path: interact
           method: post
+  authorize:
+    handler: slack.authorize
+    events:
+      - http:
+          path: authorize
+          method: get
 
 stepFunctions:
   stateMachines:
@@ -141,7 +152,21 @@ resources:
         ProvisionedThroughput:
           ReadCapacityUnits: 1
           WriteCapacityUnits: 1
-        TableName: ${self:provider.environment.DYNAMODB_TABLE}
+        TableName: ${self:provider.environment.ORDERS_TABLE}
+    SlackAppDynamoDbTable:
+      Type: 'AWS::DynamoDB::Table'
+      DeletionPolicy: Retain
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: team_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: team_id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        TableName: ${self:provider.environment.SLACK_APP_TABLE}
   Outputs:
     Poller:
       Description: The ARN of the doordash poller

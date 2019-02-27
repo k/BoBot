@@ -1,10 +1,15 @@
 import { DynamoDB } from "aws-sdk";
 
 const dynamoDb = new DynamoDB.DocumentClient();
-const TableName = process.env.DYNAMODB_TABLE;
+const OrdersTable = process.env.ORDERS_TABLE;
+const SlackAppTable = process.env.SLACK_APP_TABLE;
 
-if (!TableName) {
-  throw new Error("DYNAMODB_TABLE env var required");
+if (!OrdersTable) {
+  throw new Error("ORDERS_TABLE env var required");
+}
+
+if (!SlackAppTable) {
+  throw new Error("SLACK_APP_TABLE env var required");
 }
 
 function sanitizeObject(obj) {
@@ -22,7 +27,7 @@ function sanitizeObject(obj) {
 export const createOrderInfo = async (item) => {
   const timestamp = new Date().getTime();
   const params = {
-    TableName,
+    TableName: OrdersTable,
     Item: {
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -35,7 +40,7 @@ export const createOrderInfo = async (item) => {
 
 export const getOrderInfo = async(id: string) => {
   const params = {
-    TableName,
+    TableName: OrdersTable,
     Key: { id }
   };
 
@@ -45,7 +50,7 @@ export const getOrderInfo = async(id: string) => {
 export const updateAccounting = async (item) => {
   const timestamp = new Date().getTime();
   const params = {
-    TableName,
+    TableName: OrdersTable,
     Key: {
       id: item.id,
     },
@@ -57,4 +62,30 @@ export const updateAccounting = async (item) => {
     ReturnValues: 'ALL_NEW',
   };
   return dynamoDb.update(params).promise()
+}
+
+export const createApp = async (auth) => {
+  const timestamp = new Date().getTime();
+  const params = {
+    TableName: SlackAppTable,
+    Item: {
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      ...auth
+    }
+  };
+  return dynamoDb.put(params).promise();
+}
+
+export const getSlackApp = async(team_id: string) => {
+  const params = {
+    TableName: SlackAppTable,
+    Key: { team_id }
+  };
+
+  const { Item } = await dynamoDb.get(params).promise()
+  if (!Item) {
+    throw new Error(`Could not find Slack App for team_id: ${team_id}`);
+  }
+  return Item
 }

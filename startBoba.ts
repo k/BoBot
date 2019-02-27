@@ -1,7 +1,7 @@
 import { DateTime } from "luxon";
 import * as queryString from "query-string";
 import { StepFunctions } from "aws-sdk";
-import { webhook, getTimeZone } from "./slack";
+import { web } from "./slack";
 
 const poller_arn = process.env.POLLER_ARN;
 if (!poller_arn) {
@@ -13,14 +13,16 @@ const stepfunctions = new StepFunctions();
 export const startBoba = async (event, context) => {
   try {
     console.log(event);
-    const { text, user_id, user_name, team_domain, channel_id } = queryString.parse(
+    const { text, user_id, user_name, team_domain, channel_id, team_id } = queryString.parse(
       event.body
     );
     if (
       typeof text !== "string" ||
       typeof user_id !== "string" ||
+      typeof channel_id !== "string" ||
       typeof user_name !== "string" ||
-      typeof team_domain !== "string"
+      typeof team_domain !== "string" ||
+      typeof team_id !== "string"
     ) {
       throw new Error("Error from slack");
     }
@@ -36,8 +38,10 @@ export const startBoba = async (event, context) => {
       });
     }
     console.log(url);
-
-    await webhook.send({
+    const slack = await web(team_id)
+    await slack.chat.postMessage({
+      text: `New Boba Order started by ${user_name}! Order here: ${url}`,
+      channel: channel_id,
       attachments: [
         {
           fallback: `New Boba Order started by ${user_name}! Order here: ${url}`,
@@ -61,7 +65,7 @@ export const startBoba = async (event, context) => {
       input: JSON.stringify({ 
         url,
         timestamp: DateTime.local().toISO(),
-        slack_team_domain: team_domain,
+        slack_team_id: team_id,
         slack_channel_id: channel_id,
         vendor: vendorFromUrl(url),
       })
