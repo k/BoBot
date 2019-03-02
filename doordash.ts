@@ -38,7 +38,7 @@ export const accounting = async(event) => {
     const update_message = createBillMessage(updatedOrderInfo.url, callback_id, updatedOrderInfo.order_json, updatedOrderInfo.accounting);
     console.log(update_message);
     const slack = await web(team_id);
-    slack.chat.update({
+    await slack.chat.update({
       ts,
       channel: channel_id,
       ...update_message
