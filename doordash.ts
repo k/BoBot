@@ -43,17 +43,13 @@ export const accounting = async(event) => {
       channel: channel_id,
       ...update_message
     });
+
     return {
       statusCode: 200,
-      body: {
-        ...update_message,
-        replace_original: true,
-      }
     };
   }
   return {
     statusCode: 200,
-    body: original_message // Default to noop
   };
 }
 
@@ -134,7 +130,9 @@ function createBillMessage(url, callback_id, cart_order_json, accounting) {
     "-------------------------",
     totalsDisplayString(cart_order_json),
     "-------------------------",
-    ordersDisplayStringWithAccounting(cart_order_json, accounting)
+    ordersDisplayStringWithAccounting(cart_order_json, accounting),
+    "-------------------------",
+    "Message me to send feedback!"
   ].join("\n");
   const type: "select" | "button" = "select";
   return { 
@@ -144,12 +142,12 @@ function createBillMessage(url, callback_id, cart_order_json, accounting) {
       title_link: url
     },
     {
-      text: "Please pay the host promptly",
+      text: "Please pay the host promptly. Mark yourself as paid below",
       callback_id,
       actions: [{
         type,
         name: "orderers",
-        text: "Mark yourself as paid",
+        text: "Select your name",
         options: ordererOptions(cart_order_json)
       }]
     }]
@@ -278,12 +276,12 @@ function ordersDisplayStringWithAccounting(cart_order_json, accounting_object) {
       const order_costs = calculcateOrderCosts(cart_order_json);
             const total = calculateConsumerTotal(subtotal, order_costs);
             const fees = total - subtotal;
-      const paidStatus = accounting_object[order.id] ? "" : "HAS NOT PAID!!";
+      const paidStatus = accounting_object[order.id] ? " ✅" : " ❌";
       return `${name} owes ${formatter.format(
         subtotal / 100
       )} + ${formatter.format(fees / 100)} = ${formatter.format(
         total / 100
-      )} -- ${paidStatus}`;
+      )} ${paidStatus}`;
     })
     .join("\n");
 }
