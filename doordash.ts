@@ -69,19 +69,22 @@ const ORDER_CART_REGEX_PATTERN = /view\.order_cart\s*\=\s*JSON\.parse\((.*)\);\n
 //
 export const didCheckout = async (event, context) => {
   const { url, timestamp, slack_team_id, slack_channel_id } = event;
-  const order = await getCartOrderJson(url);
-  if (DateTime.local().diff(DateTime.fromISO(timestamp)).as("hours") > 6) {
-    const slack = await web(slack_team_id);
-    slack.chat.postMessage({
-      channel: slack_channel_id,
-      text: `This order has been going on too long so I will stop monitoring it: ${url}}`
-    });
-  }
+  try {
+    const order = await getCartOrderJson(url);
+    if (DateTime.local().diff(DateTime.fromISO(timestamp)).as("hours") > 6) {
+      const slack = await web(slack_team_id);
+      slack.chat.postMessage({
+        channel: slack_channel_id,
+        text: `This order has been going on too long so I will stop monitoring it: ${url}}`
+      });
+    }
 
-  if (getTip(order) != null && getTax(order) != null) {
-    return { ...event, didCheckout: 1 };
+    if (getTip(order) != null && getTax(order) != null) {
+      return { ...event, didCheckout: 1 };
+    }
+  } catch (error) {
+    console.log(error);
   }
-
   return { ...event, didCheckout: 0, };
 };
 
