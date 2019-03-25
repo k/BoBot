@@ -201,7 +201,7 @@ function getOrders(order) {
   return order.orders;
 }
 function getName(consumer) {
-  return `${consumer.first_name} ${consumer.last_name}`;
+  return consumer.first_name + ' '  + (consumer.last_name != null ? consumer.last_name : '');
 }
 
 function calculateConsumerSubtotal(order) {
@@ -256,6 +256,7 @@ function totalsDisplayString(cart_order_json) {
 
 function ordersDisplayString(cart_order_json) {
   return getOrders(cart_order_json)
+    .filter(order => calculateConsumerSubtotal(order) == 0)
     .map(order => {
       const subtotal = calculateConsumerSubtotal(order);
       const order_costs = calculcateOrderCosts(cart_order_json);

@@ -6,7 +6,7 @@ provider:
   name: aws
   stage: dev
   runtime: nodejs8.10
-  timeout: 10
+  timeout: 30
   memorySize: 512
 
   iamRoleStatements:
@@ -94,7 +94,7 @@ stepFunctions:
             Default: sleep
           sleep:
             Type: Wait
-            Seconds: 60
+            Seconds: 300
             Next: poll
           notify:
             Type: Task
@@ -150,8 +150,8 @@ resources:
           - AttributeName: id
             KeyType: HASH
         ProvisionedThroughput:
-          ReadCapacityUnits: 1
-          WriteCapacityUnits: 1
+          ReadCapacityUnits: 3
+          WriteCapacityUnits: 3
         TableName: ${self:provider.environment.ORDERS_TABLE}
     SlackAppDynamoDbTable:
       Type: 'AWS::DynamoDB::Table'

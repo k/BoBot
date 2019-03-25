@@ -32,26 +32,25 @@ export const startBoba = async (event, context) => {
     const fields: { title: string, value: string, short?: boolean }[] = []
     if (message.length > 0) {
       fields.push({
-          title: "Message from host",
-          value: message,
+          title: message,
+          value: '',
           short: false
       });
     }
     console.log(url);
     const slack = await web(team_id)
     await slack.chat.postMessage({
-      text: `New Boba Order started by ${user_name}! Order here: ${url}`,
+      text: '',
       channel: channel_id,
       attachments: [
         {
           fallback: `New Boba Order started by ${user_name}! Order here: ${url}`,
           color: "#36a64f",
-          pretext: "<!channel> It's about time for some boba",
+          pretext: `<!channel> New Boba Order started by ${user_name}!`,
           author_name: user_name,
           author_link: `http://${team_domain}.slack.com/team/${user_id}`,
-          title: "New Boba Order!",
+          title: "Click here to order!",
           title_link: url,
-          text: "Order by clicking the url above",
           fields,
           footer: "Boba",
           footer_icon: "https://s3.amazonaws.com/k33.me/images/boba-icon.png",
