@@ -70,7 +70,7 @@ const ORDER_CART_REGEX_PATTERN = /view\.order_cart\s*\=\s*JSON\.parse\((.*)\);\n
 export const didCheckout = async (event, context) => {
   const { url, timestamp, slack_team_id, slack_channel_id } = event;
   try {
-    const order = await getCartOrderJson(url);
+    const order = await getCartOrderJson(url.replace("cart", "orders/track"));
     if (DateTime.local().diff(DateTime.fromISO(timestamp)).as("hours") > 6) {
       const slack = await web(slack_team_id);
       slack.chat.postMessage({
