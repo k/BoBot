@@ -39,7 +39,7 @@
   "dependencies": {
     "@slack/client": "^4.9.0",
     "@types/uuid": "^3.4.4",
-    "luxon": "^1.11.3",
+    "luxon": "^2.5.2",
     "query-string": "^6.2.0",
     "request": "^2.88.0",
     "request-promise-native": "^1.0.7",
